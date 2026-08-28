@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clean Window</title>
+<meta name="description" content="Today's carbon intensity curve with the cleanest remaining window highlighted, how clean each of your sites is right now, and the CO2 saved by shifting flexible workloads.">
+<link rel="stylesheet" href="/api/v1/apps-runtime/v1/theme.css">
+<script src="/api/v1/apps-runtime/v1/embabel.js"></script>
+<script type="application/embabel-app+json">
+{"version":1,"name":"clean-window","requires":{"lenses":[],"views":["GridNow","UkPlaceGridNow","TodayCurve","CleanestWindowToday","ShiftingSaves","FuelMixNow","SpreadAcrossSites","SchedulingBriefing"],"realms":["realm-grid"],"namespaces":[]}}
+</script>
+<style>
+  :root{--bg:#0a0a0f;--surface:#13131a;--border:#1e1e2e;--cyan:#63c0f5;--purple:#9f77cd;
+        --green:#3fd73c;--dim:#6b7280;--text:#e5e7eb;--amber:#e8b64c;--red:#e2685f;}
+  *{box-sizing:border-box;}
+  body{margin:0;padding:0 0 56px;background:var(--bg);color:var(--text);
+       font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.5;}
+  .wrap{max-width:1120px;margin:0 auto;padding:26px 20px 8px;}
+  header h1{margin:0;font-size:1.75rem;font-weight:300;letter-spacing:.1em;text-transform:uppercase;}
+  header p.sub{margin:6px 0 0;color:var(--dim);font-size:.88rem;max-width:72ch;}
+  .verdict{margin:22px 0 0;padding:18px 20px;background:var(--surface);border:1px solid var(--border);
+           border-left:3px solid var(--green);border-radius:10px;}
+  .verdict .big{font-size:1.3rem;font-weight:500;}
+  .verdict .why{color:var(--dim);font-size:.88rem;margin-top:5px;}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:16px;}
+  .tile{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:14px 16px;}
+  .tile .n{font-size:1.7rem;font-weight:600;font-variant-numeric:tabular-nums;}
+  .tile .l{color:var(--dim);font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;margin-top:2px;}
+  nav{display:flex;flex-wrap:wrap;gap:6px;margin:24px 0 14px;}
+  nav button{background:transparent;border:1px solid var(--border);color:var(--dim);padding:7px 14px;
+             border-radius:999px;cursor:pointer;font-size:.84rem;font-family:inherit;}
+  nav button:hover{color:var(--text);border-color:var(--cyan);}
+  nav button[aria-selected="true"]{background:var(--cyan);border-color:var(--cyan);color:#06121c;}
+  .toolbar{display:flex;align-items:center;gap:12px;margin-bottom:12px;}
+  .toolbar .spacer{flex:1;}
+  .refresh{background:transparent;border:1px solid var(--border);color:var(--dim);padding:6px 12px;
+           border-radius:6px;cursor:pointer;font-size:.79rem;font-family:inherit;}
+  .refresh:hover{color:var(--cyan);border-color:var(--cyan);}
+  .stamp{color:var(--dim);font-size:.76rem;}
+  .scroll{overflow-x:auto;}
+  table{width:100%;border-collapse:collapse;font-size:.86rem;}
+  th{text-align:left;color:var(--dim);font-weight:500;font-size:.7rem;text-transform:uppercase;
+     letter-spacing:.07em;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap;}
+  td{padding:9px 10px;border-bottom:1px solid var(--border);}
+  tbody tr:hover{background:rgba(99,192,245,.05);}
+  .num{font-variant-numeric:tabular-nums;}
+  .pill{font-size:.67rem;text-transform:uppercase;letter-spacing:.05em;border-radius:4px;padding:2px 7px;
+        border:1px solid var(--border);color:var(--dim);white-space:nowrap;}
+  /* The operator's own five bands, coloured once and used everywhere. */
+  .b-verylow{color:var(--green);} .b-low{color:var(--green);}
+  .b-moderate{color:var(--amber);} .b-high{color:var(--red);} .b-veryhigh{color:var(--red);}
+  .chart{display:flex;align-items:flex-end;gap:2px;height:170px;padding:10px 0 0;overflow-x:auto;}
+  .chart .col{display:flex;flex-direction:column;justify-content:flex-end;align-items:center;
+              min-width:13px;height:100%;}
+  .chart i{display:block;width:11px;border-radius:2px 2px 0 0;background:var(--dim);}
+  .chart .col.settled i{opacity:.45;}
+  .chart .col.best i{background:var(--green);box-shadow:0 0 10px rgba(63,215,60,.55);}
+  .chart .col.now i{outline:1px solid var(--cyan);outline-offset:1px;}
+  .axis{display:flex;gap:2px;color:var(--dim);font-size:.62rem;margin-top:5px;overflow-x:auto;}
+  .axis span{min-width:13px;text-align:center;}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--dim);font-size:.76rem;margin-top:10px;}
+  .legend b{font-weight:500;}
+  .mix{display:flex;height:26px;border-radius:5px;overflow:hidden;border:1px solid var(--border);}
+  .mix i{display:block;height:100%;}
+  .note{margin:14px 0 0;padding:12px 14px;border-radius:8px;font-size:.83rem;
+        background:rgba(232,182,76,.08);border:1px solid rgba(232,182,76,.28);color:#f0d49a;}
+  .empty{padding:26px;text-align:center;color:var(--dim);}
+  .prose{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px 22px;
+         white-space:pre-wrap;font-size:.92rem;max-width:78ch;}
+  .panel{display:none;} .panel.on{display:block;}
+  footer.src{margin:32px 0 10px;color:var(--dim);font-size:.77rem;max-width:80ch;}
+  footer.src a{color:var(--cyan);text-decoration:none;} footer.src a:hover{text-decoration:underline;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Clean Window</h1>
+    <p class="sub">Britain's grid swings by a factor of three or four within a day. Nightly builds, batch ETL and model training do not care what time they run — this is what moving them is worth.</p>
+  </header>
+
+  <div class="verdict" id="verdict">
+    <div class="big" id="verdict-big">Reading the grid&hellip;</div>
+    <div class="why" id="verdict-why">Regional intensity per site, and today's national half-hourly curve.</div>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <nav id="tabs" role="tablist">
+    <button role="tab" data-panel="today" aria-selected="true">Today</button>
+    <button role="tab" data-panel="sites" aria-selected="false">Sites</button>
+    <button role="tab" data-panel="saving" aria-selected="false">What shifting saves</button>
+    <button role="tab" data-panel="mix" aria-selected="false">What's generating</button>
+    <button role="tab" data-panel="places" aria-selected="false">Watched places</button>
+    <button role="tab" data-panel="advice" aria-selected="false">Recommendation</button>
+  </nav>
+
+  <div class="toolbar">
+    <embabel-operation-state id="state"></embabel-operation-state>
+    <span class="spacer"></span>
+    <span class="stamp" id="stamp"></span>
+    <button class="refresh" id="refresh" type="button">Refresh</button>
+  </div>
+
+  <section class="panel on" id="panel-today"></section>
+  <section class="panel" id="panel-sites"></section>
+  <section class="panel" id="panel-saving"></section>
+  <section class="panel" id="panel-mix"></section>
+  <section class="panel" id="panel-places"></section>
+  <section class="panel" id="panel-advice"></section>
+
+  <footer class="src">
+    Carbon intensity from the
+    <a href="https://carbonintensity.org.uk" target="_blank" rel="noopener noreferrer">National Grid ESO carbon intensity API</a>
+    — open, keyless, Great Britain only. Intensity is grams of CO2 per kilowatt-hour consumed.
+    The half-hourly curve is NATIONAL; the per-site readings are REGIONAL, and the two are not the same number.
+  </footer>
+</div>
+
+<div id="embabel-badge" style="position:fixed;bottom:0;left:0;right:0;text-align:center;padding:6px 0;background:rgba(10,10,15,0.9);border-top:1px solid rgba(99,192,245,0.2);font-size:0.75rem;color:#6b7280;z-index:9999;pointer-events:none;">
+  Created with <a href="https://embabel.com" target="_blank" rel="noopener noreferrer" style="color:#63c0f5;text-decoration:none;pointer-events:auto;">Embabel Me</a>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  function escapeHtml(v) {
+    if (v === null || v === undefined) return '';
+    return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  var stateEl = document.getElementById('state');
+  var cache = {}, inflight = {};
+
+  function rowsOf(r) {
+    if (!r) return [];
+    if (Array.isArray(r)) return r;
+    if (Array.isArray(r.data)) return r.data;
+    if (r.data && Array.isArray(r.data.rows)) return r.data.rows;
+    if (Array.isArray(r.rows)) return r.rows;
+    return [];
+  }
+  function warningsOf(r) {
+    if (!r) return [];
+    if (Array.isArray(r.warnings)) return r.warnings;
+    if (r.data && Array.isArray(r.data.warnings)) return r.data.warnings;
+    return [];
+  }
+
+  function load(name, params, force) {
+    if (!force && cache[name]) return Promise.resolve(cache[name]);
+    if (inflight[name]) return inflight[name];
+    var p = embabel.views.invoke(name, params || {}, { state: stateEl })
+      .then(function (res) {
+        var packed = { rows: rowsOf(res), warnings: warningsOf(res) };
+        cache[name] = packed; inflight[name] = null; return packed;
+      })
+      .catch(function (e) { inflight[name] = null; throw e; });
+    inflight[name] = p;
+    return p;
+  }
+
+  function failure(el, e) {
+    el.innerHTML = '<div class="note"><strong>The grid could not be read.</strong> ' +
+      escapeHtml(e && e.message ? e.message : String(e)) +
+      ' — this is the lookup failing, not a clean grid.</div>';
+  }
+  function warnBlock(w) {
+    if (!w || !w.length) return '';
+    return '<div class="note"><strong>Partial answer.</strong> ' +
+      w.map(function (x) { return escapeHtml(String(x).slice(0, 240)); }).join('<br>') + '</div>';
+  }
+  function stamp() {
+    document.getElementById('stamp').textContent = 'read at ' + new Date().toLocaleTimeString();
+  }
+  function bandClass(b) { return 'b-' + String(b || '').replace(/\s+/g, ''); }
+  function clock(iso) { return String(iso || '').slice(11, 16); }
+
+  function tiles(t) {
+    document.getElementById('tiles').innerHTML = t.map(function (x) {
+      return '<div class="tile"><div class="n" style="color:' + x.colour + '">' + escapeHtml(x.n) +
+             '</div><div class="l">' + escapeHtml(x.l) + '</div></div>';
+    }).join('');
+  }
+
+  /* ---- Today: the curve ---- */
+  function renderToday(force) {
+    var el = document.getElementById('panel-today');
+    return Promise.all([load('TodayCurve', { limit: 48 }, force),
+                        load('CleanestWindowToday', { limit: 6 }, force),
+                        load('ShiftingSaves', { limit: 50 }, force)])
+      .then(function (all) {
+        var curve = all[0].rows, clean = all[1].rows, saves = all[2].rows;
+        if (!curve.length) {
+          el.innerHTML = '<div class="empty">No half-hourly data returned for today.</div>';
+          return;
+        }
+        var vals = curve.map(function (r) { return Number(r.forecast) || 0; });
+        var max = Math.max.apply(null, vals) || 1;
+        var min = Math.min.apply(null, vals);
+        var bestAt = clean.length ? clean[0].startsUtc : null;
+        var totalKg = saves.reduce(function (s, r) { return s + (Number(r.kgCo2SavedPerDay) || 0); }, 0);
+        var mean = Math.round(vals.reduce(function (s, v) { return s + v; }, 0) / vals.length);
+
+        tiles([
+          { n: mean, l: 'day mean gCO2/kWh', colour: 'var(--text)' },
+          { n: min, l: 'cleanest today', colour: 'var(--green)' },
+          { n: max, l: 'dirtiest today', colour: 'var(--red)' },
+          { n: clean.length ? clock(bestAt) : '—', l: 'best window left (UTC)', colour: 'var(--cyan)' },
+          { n: Math.round(totalKg * 10) / 10, l: 'kg CO2 saved by shifting', colour: 'var(--green)' },
+        ]);
+
+        document.getElementById('verdict-big').textContent = clean.length
+          ? 'Run it at ' + clock(bestAt) + ' UTC — ' + clean[0].gramsCo2PerKwh + ' gCO2/kWh.'
+          : 'Today has fully settled; there is no window left to move work into.';
+        document.getElementById('verdict-why').textContent = clean.length
+          ? 'Against a day mean of ' + mean + ' gCO2/kWh. Shifting every flexible load listed here into that window saves '
+            + (Math.round(totalKg * 10) / 10) + ' kg CO2 today.'
+          : 'Come back tomorrow, or widen the sites you track.';
+
+        var bars = curve.map(function (r) {
+          var v = Number(r.forecast) || 0;
+          var h = Math.max(2, Math.round((v / max) * 150));
+          var cls = 'col' + (r.status === 'settled' ? ' settled' : '') +
+                    (r.periodFrom === bestAt ? ' best' : '');
+          return '<div class="' + cls + '" title="' + escapeHtml(clock(r.periodFrom)) + ' UTC — ' +
+                 escapeHtml(v) + ' gCO2/kWh (' + escapeHtml(r.band) + ')">' +
+                 '<i style="height:' + h + 'px"></i></div>';
+        }).join('');
+        var axis = curve.map(function (r, i) {
+          return '<span>' + (i % 6 === 0 ? escapeHtml(clock(r.periodFrom).slice(0, 2)) : '') + '</span>';
+        }).join('');
+
+        el.innerHTML = warnBlock(all[0].warnings) +
+          '<div class="scroll"><div class="chart">' + bars + '</div><div class="axis">' + axis + '</div></div>' +
+          '<div class="legend">' +
+            '<span><b style="color:var(--green)">&#9608;</b> cleanest window still to come</span>' +
+            '<span><b style="color:var(--dim)">&#9608;</b> already settled</span>' +
+            '<span>hours are UTC</span>' +
+          '</div>' +
+          '<div class="note">This curve is <strong>national</strong>. It is the right thing to pick an hour from, ' +
+          'because the half-hourly shape is only published nationally — but the level where a site actually sits ' +
+          'is regional, and the Sites tab has those.</div>';
+        stamp();
+      }).catch(function (e) { failure(el, e); });
+  }
+
+  /* ---- Sites ---- */
+  function renderSites(force) {
+    var el = document.getElementById('panel-sites');
+    return Promise.all([load('GridNow', { limit: 50 }, force),
+                        load('SpreadAcrossSites', {}, force)])
+      .then(function (both) {
+        var rows = both[0].rows, spread = both[1].rows[0];
+        if (!rows.length) {
+          el.innerHTML = '<div class="empty">No sites are being tracked yet. Add a GridSite with an outward postcode and this fills in.</div>';
+          return;
+        }
+        var body = rows.map(function (r) {
+          return '<tr>' +
+            '<td>' + escapeHtml(r.site) + '<div style="color:var(--dim);font-size:.78rem">' +
+              escapeHtml(r.workload || '') + '</div></td>' +
+            '<td class="num">' + escapeHtml(r.outcode) + '</td>' +
+            '<td class="num ' + bandClass(r.band) + '" style="font-weight:600">' +
+              escapeHtml(r.gramsCo2PerKwh) + '</td>' +
+            '<td><span class="pill ' + bandClass(r.band) + '">' + escapeHtml(r.band) + '</span></td>' +
+          '</tr>';
+        }).join('');
+        var spreadNote = spread
+          ? '<div class="note"><strong>' + escapeHtml(spread.dirtiestSite) + ' is ' +
+            escapeHtml(spread.timesDirtier) + '&times; dirtier than ' + escapeHtml(spread.cleanestSite) +
+            ' right now</strong> (' + escapeHtml(spread.dirtiestGramsPerKwh) + ' against ' +
+            escapeHtml(spread.cleanestGramsPerKwh) + ' gCO2/kWh). For work that can run in either place, ' +
+            'where it runs matters as much as when.</div>'
+          : '';
+        el.innerHTML = warnBlock(both[0].warnings) +
+          '<div class="scroll"><table><thead><tr><th>Site</th><th>Outcode</th>' +
+          '<th>gCO2/kWh (regional)</th><th>Band</th></tr></thead><tbody>' + body + '</tbody></table></div>' +
+          spreadNote;
+        stamp();
+      }).catch(function (e) { failure(el, e); });
+  }
+
+  /* ---- What shifting saves ---- */
+  function renderSaving(force) {
+    var el = document.getElementById('panel-saving');
+    return load('ShiftingSaves', { limit: 50 }, force).then(function (r) {
+      if (!r.rows.length) {
+        el.innerHTML = '<div class="empty">No site has a recorded flexible load, so there is nothing to price. ' +
+          'Set <code>flexibleLoadKwh</code> on a GridSite &mdash; the daily kilowatt-hours that could genuinely run at another time.</div>';
+        return;
+      }
+      var body = r.rows.map(function (x) {
+        return '<tr>' +
+          '<td>' + escapeHtml(x.site) + '<div style="color:var(--dim);font-size:.78rem">' +
+            escapeHtml(x.flexibleWorkload || '') + '</div></td>' +
+          '<td class="num">' + escapeHtml(x.flexibleLoadKwhPerDay) + '</td>' +
+          '<td class="num">' + escapeHtml(x.dayMeanGramsPerKwh) + '</td>' +
+          '<td class="num b-low">' + escapeHtml(x.cleanestGramsPerKwh) + '</td>' +
+          '<td class="num">' + escapeHtml(x.cleanestWindowUtc) + '</td>' +
+          '<td class="num" style="color:var(--green);font-weight:600">' + escapeHtml(x.kgCo2SavedPerDay) + '</td>' +
+          '<td class="num" style="color:var(--green);font-weight:600">' + escapeHtml(x.tonnesCo2SavedPerYear) + '</td>' +
+        '</tr>';
+      }).join('');
+      el.innerHTML = warnBlock(r.warnings) +
+        '<div class="scroll"><table><thead><tr><th>Site</th><th>Flexible kWh/day</th>' +
+        '<th>Day mean</th><th>Cleanest</th><th>Window (UTC)</th><th>kg CO2 / day</th><th>t CO2 / year</th>' +
+        '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+        '<div class="note">The annual figure assumes today’s spread is typical, which it is not exactly &mdash; ' +
+        'it is an order-of-magnitude answer to &ldquo;is this worth doing at all&rdquo;, and it scales linearly with the ' +
+        'flexible load you entered.</div>';
+      stamp();
+    }).catch(function (e) { failure(el, e); });
+  }
+
+  /* ---- Generation mix ---- */
+  function renderMix(force) {
+    var el = document.getElementById('panel-mix');
+    var colour = { wind:'#63c0f5', solar:'#e8b64c', nuclear:'#9f77cd', hydro:'#3fd73c',
+                   biomass:'#7a8b5a', gas:'#e2685f', coal:'#4b4b57', imports:'#5c7f9a', other:'#6b7280' };
+    return load('FuelMixNow', { limit: 12 }, force).then(function (r) {
+      if (!r.rows.length) { el.innerHTML = '<div class="empty">No generation mix returned.</div>'; return; }
+      var bar = r.rows.map(function (x) {
+        return '<i style="width:' + (Number(x.percent) || 0) + '%;background:' +
+               (colour[x.fuel] || '#6b7280') + '" title="' + escapeHtml(x.fuel) + ' ' +
+               escapeHtml(x.percent) + '%"></i>';
+      }).join('');
+      var body = r.rows.map(function (x) {
+        return '<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' +
+          (colour[x.fuel] || '#6b7280') + ';margin-right:8px"></span>' + escapeHtml(x.fuel) + '</td>' +
+          '<td class="num">' + escapeHtml(x.percent) + '%</td>' +
+          '<td><span class="pill">' + escapeHtml(x.kind) + '</span></td></tr>';
+      }).join('');
+      el.innerHTML = warnBlock(r.warnings) +
+        '<div class="mix">' + bar + '</div>' +
+        '<div class="scroll" style="margin-top:14px"><table><thead><tr><th>Fuel</th><th>Share</th><th></th>' +
+        '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+        '<div class="note">National, and the explanation behind the intensity number: a low reading is almost always wind, a high one almost always gas.</div>';
+      stamp();
+    }).catch(function (e) { failure(el, e); });
+  }
+
+  /* ---- Watched places (another realm's anchor) ---- */
+  function renderPlaces(force) {
+    var el = document.getElementById('panel-places');
+    return load('UkPlaceGridNow', { limit: 40 }, force).then(function (r) {
+      if (!r.rows.length) {
+        el.innerHTML = '<div class="empty">No UK places are being watched. This tab reads realm-uk-streets’ own anchor, ' +
+          'so it fills in by itself wherever that realm is installed &mdash; no second list to maintain.</div>';
+        return;
+      }
+      var body = r.rows.map(function (x) {
+        return '<tr><td>' + escapeHtml(x.place) + '</td><td class="num">' + escapeHtml(x.outcode) + '</td>' +
+          '<td>' + escapeHtml(x.region || '') + '</td>' +
+          '<td class="num ' + bandClass(x.band) + '" style="font-weight:600">' + escapeHtml(x.gramsCo2PerKwh) + '</td>' +
+          '<td><span class="pill ' + bandClass(x.band) + '">' + escapeHtml(x.band) + '</span></td></tr>';
+      }).join('');
+      el.innerHTML = warnBlock(r.warnings) +
+        '<div class="scroll"><table><thead><tr><th>Place</th><th>Outcode</th><th>Region</th>' +
+        '<th>gCO2/kWh</th><th>Band</th></tr></thead><tbody>' + body + '</tbody></table></div>' +
+        '<div class="note">These are places another realm already tracks. This realm added the grid to them without being told about them.</div>';
+      stamp();
+    }).catch(function (e) { failure(el, e); });
+  }
+
+  /* ---- Recommendation: the only panel that spends a model call ---- */
+  function renderAdvice(force) {
+    var el = document.getElementById('panel-advice');
+    return load('SchedulingBriefing', { limit: 12 }, force).then(function (r) {
+      if (!r.rows.length || !r.rows[0].briefing) {
+        el.innerHTML = '<div class="empty">Nothing to recommend: no sites, or no half-hours left today.</div>';
+        return;
+      }
+      el.innerHTML = warnBlock(r.warnings) +
+        '<div class="prose">' + escapeHtml(r.rows[0].briefing) + '</div>' +
+        '<div class="note">Written from the numbers on the other tabs, and from nothing else.</div>';
+      stamp();
+    }).catch(function (e) { failure(el, e); });
+  }
+
+  var renderers = { today: renderToday, sites: renderSites, saving: renderSaving,
+                    mix: renderMix, places: renderPlaces, advice: renderAdvice };
+  var current = 'today';
+
+  function show(name, force) {
+    current = name;
+    var bs = document.querySelectorAll('#tabs button');
+    for (var i = 0; i < bs.length; i++) {
+      bs[i].setAttribute('aria-selected', bs[i].dataset.panel === name ? 'true' : 'false');
+    }
+    var ps = document.querySelectorAll('.panel');
+    for (var j = 0; j < ps.length; j++) ps[j].classList.remove('on');
+    var el = document.getElementById('panel-' + name);
+    el.classList.add('on');
+    if (!el.innerHTML.trim() || force) {
+      el.innerHTML = '<div class="empty">Reading the grid&hellip;</div>';
+      renderers[name](force);
+    }
+  }
+
+  document.getElementById('tabs').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-panel]');
+    if (b) show(b.dataset.panel, false);
+  });
+  document.getElementById('refresh').addEventListener('click', function () { show(current, true); });
+
+  function start() { show('today', false); }
+
+  if (embabel.manifest && embabel.manifest.ready) {
+    embabel.manifest.ready.then(function (m) {
+      if (m && m.ok === false) {
+        var missing = (m.missing || []).map(function (x) { return escapeHtml(String(x)); }).join(', ');
+        document.getElementById('verdict-big').textContent = 'This world is missing what the app reads.';
+        document.getElementById('verdict-why').textContent =
+          'Install realm-grid and name a site with its outward postcode' + (missing ? ' (missing: ' + missing + ')' : '') + '.';
+        return;
+      }
+      start();
+    }).catch(start);
+  } else { start(); }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,60 @@
+# Three producers. One is keyed per site; two are national and take no key at
+# all, so they answer for any number of sites in a single call — the cheapest
+# shape a producer comes in, and the right one whenever the underlying figure is
+# not per-anchor.
+
+# REGIONAL, per site. The response nests a reading list INSIDE a region element,
+# so `records` reaches through both with a nested wildcard: `$.data[*].data[*]`.
+# Two things about that are worth knowing, because both fail the same silent way —
+# a successful HTTP call producing no rows at all:
+#   * a positional `[0]` in the records path does not select; the wildcard does;
+#   * projecting `data.0.intensity.forecast` from the top instead puts an array
+#     index in the MIDDLE of a property path, which does not resolve either. The
+#     property arrives null, the identity check drops the record, and a perfectly
+#     good fetch yields nothing. Select the record at the right depth and every
+#     projection below is a plain field read.
+- name: regionalNow
+  kind: remote
+  operation: regionalNow
+  records: "$.data[*].data[*]"
+  keyArgs: [outcode]
+  echoKeyAs: key
+  maxKeysPerCall: 1
+  project:
+    intensity: intensity.forecast
+    index: intensity.index
+    periodFrom: from
+    periodTo: to
+  # The grid publishes on half-hourly settlement periods; polling faster buys a
+  # repeat of the same number.
+  cache: { kind: ttl, seconds: 900 }
+
+# NATIONAL, and unkeyed. No `keyArgs` — the endpoint takes no parameters, so one
+# HTTP call serves every site in the query and `echoKeyAs` links the 48 periods
+# back to whichever site asked. Forty-eight records per site sounds like a
+# fan-out and is not: the identity is the period, so five sites share the same
+# forty-eight nodes.
+- name: nationalToday
+  kind: remote
+  operation: nationalToday
+  records: "$.data[*]"
+  echoKeyAs: key
+  project:
+    periodFrom: from
+    periodTo: to
+    forecast: intensity.forecast
+    actual: intensity.actual
+    index: intensity.index
+  cache: { kind: ttl, seconds: 900 }
+
+# NATIONAL, and unkeyed, same as above. The mix is what explains the intensity —
+# a low number is almost always wind, and a high one is almost always gas.
+- name: generationMix
+  kind: remote
+  operation: generationMix
+  records: "$.data.generationmix[*]"
+  echoKeyAs: key
+  project:
+    fuel: fuel
+    perc: perc
+  cache: { kind: ttl, seconds: 900 }

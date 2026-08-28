@@ -1,0 +1,17 @@
+# One source, no credential. National Grid ESO publishes this openly, so the
+# realm works the moment it is installed with nothing to configure.
+#
+# Only the parameter-free operations are declared. The service does offer a
+# rolling 48-hour forecast, but every forward-looking endpoint requires an
+# explicit `from` timestamp in its path, and a producer's arguments are static —
+# there is no way to say "from now". Declaring those operations would have
+# produced a realm that 400s on every call, so this one answers about NOW and
+# about TODAY, and says so rather than implying a forecast it cannot fetch.
+- url: carbon-intensity.json
+  name: carbon_intensity
+  type: openapi
+  auth: none
+  operation-ids:
+    - regionalNow
+    - nationalToday
+    - generationMix

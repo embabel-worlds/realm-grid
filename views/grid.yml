@@ -1,0 +1,176 @@
+# The realm's answer surface.
+#
+# TWO RULES run through all of it, and both exist because getting them wrong
+# produces a confident wrong answer rather than an error.
+#
+# 1. READ `forecast`, NOT `actual`, for anything about the rest of the day.
+#    `actual` is settled and exists only for periods that have already passed.
+#    A "cleanest window" computed from `actual` silently only ever considers the
+#    PAST, which is the exact opposite of the question, and it looks perfectly
+#    reasonable because the numbers are real.
+#
+# 2. LEVEL is regional, SHAPE is national. The intensity where a site actually
+#    is comes from GridNow; the half-hourly curve you schedule against is
+#    published nationally only. Every view below states which it is using, and
+#    none of them quietly present a national number as a site's own.
+#
+# Producer values arrive as STRINGS, so arithmetic and ORDER BY go through
+# toFloat()/toInteger().
+
+- name: GridNow
+  description: How clean the electricity is at each of your sites right now, cleanest first — regional carbon intensity in grams of CO2 per kilowatt-hour, with the grid operator's own plain-English band.
+  params:
+    limit:
+      type: int
+      default: 25
+      description: "How many sites to return, cleanest first."
+  cypher: |
+    MATCH (g:GridSite)-[:HAS_GRID_NOW]->(n:GridNow)
+    RETURN g.name AS site,
+           g.outcode AS outcode,
+           toInteger(n.intensity) AS gramsCo2PerKwh,
+           n.index AS band,
+           g.workload AS workload,
+           n.periodFrom AS forPeriodUtc
+    ORDER BY gramsCo2PerKwh ASC
+    LIMIT $limit
+
+- name: UkPlaceGridNow
+  description: The same reading for every UK place this world already watches, cleanest first — no site list required. Dormant where realm-uk-streets is not installed.
+  params:
+    limit:
+      type: int
+      default: 25
+      description: "How many places to return, cleanest first."
+  cypher: |
+    MATCH (p:UkPlace)-[:HAS_GRID_NOW]->(n:GridNow)
+    RETURN p.name AS place,
+           p.outcode AS outcode,
+           p.region AS region,
+           toInteger(n.intensity) AS gramsCo2PerKwh,
+           n.index AS band
+    ORDER BY gramsCo2PerKwh ASC
+    LIMIT $limit
+
+- name: TodayCurve
+  description: Today's national carbon intensity, half-hour by half-hour — the shape of the day you schedule against. `actual` is settled and appears only for periods that have passed; `forecast` covers the whole day.
+  params:
+    limit:
+      type: int
+      default: 48
+      description: "How many half-hourly periods to return, in time order."
+  cypher: |
+    MATCH (g:GridSite)-[:HAS_GRID_TODAY]->(h:GridHalfHour)
+    WITH DISTINCT h.periodFrom AS periodFrom, h.periodTo AS periodTo,
+         toInteger(h.forecast) AS forecast, toInteger(h.actual) AS actual, h.index AS band
+    RETURN periodFrom, periodTo, forecast, actual, band,
+           CASE WHEN actual IS NULL THEN 'still to come' ELSE 'settled' END AS status
+    ORDER BY periodFrom ASC
+    LIMIT $limit
+
+- name: CleanestWindowToday
+  description: The cleanest hours still to come today, nationally — the window to move a flexible job into. Considers only periods that have not yet passed, so the answer is always actionable rather than a description of this morning.
+  params:
+    limit:
+      type: int
+      default: 6
+      description: "How many half-hourly periods to return, cleanest first."
+  cypher: |
+    MATCH (g:GridSite)-[:HAS_GRID_TODAY]->(h:GridHalfHour)
+    WITH DISTINCT h.periodFrom AS periodFrom, toInteger(h.forecast) AS forecast, h.index AS band
+    WHERE datetime(replace(periodFrom, 'Z', ':00Z')) > datetime()
+    RETURN periodFrom AS startsUtc,
+           substring(periodFrom, 11, 5) AS startsUtcClock,
+           forecast AS gramsCo2PerKwh,
+           band
+    ORDER BY forecast ASC, startsUtc ASC
+    LIMIT $limit
+
+- name: ShiftingSaves
+  description: The number to take upstairs. For each site, the CO2 saved per day by running its flexible load in today's cleanest remaining window instead of at the day's average intensity — and the same figure annualised. This is what the rest of the realm is for.
+  params:
+    limit:
+      type: int
+      default: 25
+      description: "How many sites to return, biggest saving first."
+  cypher: |
+    MATCH (g:GridSite)-[:HAS_GRID_TODAY]->(h:GridHalfHour)
+    WITH DISTINCT h.periodFrom AS periodFrom, toInteger(h.forecast) AS forecast
+    WITH collect({at: periodFrom, g: forecast}) AS day
+    WITH day,
+         reduce(s = 0, x IN day | s + x.g) * 1.0 / size(day) AS dayMean,
+         [x IN day WHERE datetime(replace(x.at, 'Z', ':00Z')) > datetime()] AS ahead
+    WITH dayMean, ahead,
+         reduce(b = NULL, x IN ahead | CASE WHEN b IS NULL OR x.g < b.g THEN x ELSE b END) AS best
+    MATCH (g:GridSite)
+    WITH g, dayMean, best
+    WHERE best IS NOT NULL AND g.flexibleLoadKwh IS NOT NULL
+    WITH g, dayMean, best, toFloat(g.flexibleLoadKwh) AS kwh
+    RETURN g.name AS site,
+           g.workload AS flexibleWorkload,
+           toInteger(kwh) AS flexibleLoadKwhPerDay,
+           round(dayMean) AS dayMeanGramsPerKwh,
+           best.g AS cleanestGramsPerKwh,
+           substring(best.at, 11, 5) AS cleanestWindowUtc,
+           round(kwh * (dayMean - best.g) / 1000.0 * 10.0) / 10.0 AS kgCo2SavedPerDay,
+           round(kwh * (dayMean - best.g) / 1000.0 * 365.0 / 100.0) / 10.0 AS tonnesCo2SavedPerYear
+    ORDER BY kgCo2SavedPerDay DESC
+    LIMIT $limit
+
+- name: FuelMixNow
+  description: What is generating Britain's electricity right now, biggest share first — the explanation behind the intensity number. A low intensity is almost always wind; a high one is almost always gas.
+  params:
+    limit:
+      type: int
+      default: 12
+      description: "How many fuels to return."
+  cypher: |
+    MATCH (g:GridSite)-[:HAS_FUEL_MIX]->(f:FuelShare)
+    WITH DISTINCT f.fuel AS fuel, toFloat(f.perc) AS percent
+    RETURN fuel, percent,
+           CASE WHEN fuel IN ['wind','solar','hydro','nuclear'] THEN 'low carbon'
+                WHEN fuel IN ['biomass','imports','other'] THEN 'mixed'
+                ELSE 'fossil' END AS kind
+    ORDER BY percent DESC
+    LIMIT $limit
+
+- name: SpreadAcrossSites
+  description: How much the carbon intensity differs between your sites right now. Britain's regions routinely differ by a factor of three or four, so where a movable job runs can matter as much as when — and this view says whether that is true for you today.
+  cypher: |
+    MATCH (g:GridSite)-[:HAS_GRID_NOW]->(n:GridNow)
+    WITH collect({site: g.name, g: toInteger(n.intensity), band: n.index}) AS sites
+    WITH sites,
+         reduce(b = NULL, x IN sites | CASE WHEN b IS NULL OR x.g < b.g THEN x ELSE b END) AS cleanest,
+         reduce(w = NULL, x IN sites | CASE WHEN w IS NULL OR x.g > w.g THEN x ELSE w END) AS dirtiest
+    RETURN cleanest.site AS cleanestSite,
+           cleanest.g AS cleanestGramsPerKwh,
+           dirtiest.site AS dirtiestSite,
+           dirtiest.g AS dirtiestGramsPerKwh,
+           dirtiest.g - cleanest.g AS spreadGramsPerKwh,
+           CASE WHEN cleanest.g = 0 THEN NULL
+                ELSE round(dirtiest.g * 10.0 / cleanest.g) / 10.0 END AS timesDirtier,
+           size(sites) AS sitesCompared
+
+- name: SchedulingBriefing
+  description: The recommendation, written out. Reads today's remaining half-hours and each site's flexible load and says what to move, where to, and what it is worth. Costs a model call; the other views are the evidence under it.
+  params:
+    limit:
+      type: int
+      default: 12
+      description: "How many of the cleanest remaining periods to feed the recommendation."
+  cypher: |
+    MATCH (g:GridSite)-[:HAS_GRID_TODAY]->(h:GridHalfHour)
+    WITH DISTINCT h.periodFrom AS periodFrom, toInteger(h.forecast) AS forecast, h.index AS band
+    WHERE datetime(replace(periodFrom, 'Z', ':00Z')) > datetime()
+    WITH periodFrom, forecast, band ORDER BY forecast ASC LIMIT $limit
+    WITH collect('At ' + substring(periodFrom, 11, 5) + ' UTC the national grid is forecast at ' +
+                 toString(forecast) + ' gCO2/kWh (' + band + ').') AS periods
+    MATCH (g:GridSite)-[:HAS_GRID_NOW]->(n:GridNow)
+    WITH periods + collect(g.name + ' is in region ' + g.outcode + ', currently ' +
+         toString(toInteger(n.intensity)) + ' gCO2/kWh (' + n.index + '), with ' +
+         coalesce(g.flexibleLoadKwh, 'an unrecorded number of') +
+         ' kWh/day of flexible load: ' + coalesce(g.workload, 'unspecified work') + '.') AS facts
+    UNWIND facts AS fact
+    RETURN synthesize(fact,
+      'You are advising an engineering team on when and where to run their flexible workloads today. Using ONLY these facts, say in under 150 words: which window today is worth moving work into and why, which site is currently the best place to run something movable, and one concrete change worth making this week. Quote the actual numbers. Do not invent sites, workloads or times that are not listed, and do not recommend buying anything. Be direct; no preamble.'
+    ) AS briefing

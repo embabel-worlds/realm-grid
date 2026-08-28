@@ -1,0 +1,94 @@
+# One STORED type and three VIRTUAL ones.
+#
+#   GridSite ──HAS_GRID_NOW────▶ GridNow        regional, per site
+#   UkPlace  ──HAS_GRID_NOW────▶ GridNow        the same, on another realm's anchor
+#   GridSite ──HAS_GRID_TODAY──▶ GridHalfHour   national, 48 periods
+#   GridSite ──HAS_FUEL_MIX────▶ FuelShare      national, one row per fuel
+#
+# Two of these are NATIONAL and one is REGIONAL, and the realm says so at every
+# turn rather than blurring them. Britain has fourteen distribution regions whose
+# intensity differs substantially — Scotland is routinely half London — so "how
+# clean is my electricity" is a regional question. But the half-hourly SHAPE of
+# the day, which is what you schedule against, is only published nationally.
+# Using the national curve to pick the hour and the regional reading to state
+# the level is the honest combination, and mixing them up silently would be the
+# easy mistake.
+
+- name: GridSite
+  description: "A place whose electricity you care about, and the flexible load you could move. The one thing seeded by hand. `flexibleLoadKwh` is what makes this realm produce a number rather than a chart: the daily kilowatt-hours that genuinely could run at a different time — nightly builds, batch ETL, model training, vehicle charging — not your total consumption."
+  properties:
+    name:
+      description: "What you call the site, e.g. `London office` or `CI fleet`. Identity."
+      metadata:
+        identity: "true"
+    outcode: "Outward postcode — the part before the space, e.g. `SE10`. This is the join key; a full postcode will not resolve."
+    workload: "What actually runs here that could move, in your own words."
+    flexibleLoadKwh: "Daily kilowatt-hours that could be shifted to another time of day. An estimate is fine; the savings figures scale linearly with it, so a wrong-by-half input is wrong-by-half output rather than nonsense."
+    notes: "Anything a reader needs to interpret this site's numbers."
+
+# REGIONAL, and current.
+- name: GridNow
+  description: "The carbon intensity of the electricity in this site's distribution region right now, in grams of CO2 per kilowatt-hour. Reached from GridSite via HAS_GRID_NOW, and from realm-uk-streets' UkPlace via the same edge — so a world already watching UK places gets this without listing them again. Regional figures are FORECAST only: the grid publishes no settled actual at regional granularity. `index` is the operator's own five-band wording (very low / low / moderate / high / very high) and is the right thing to quote to a non-specialist, because 134 gCO2/kWh means nothing to most people."
+  virtualJoins:
+    - anchorLabel: GridSite
+      relationship: HAS_GRID_NOW
+      keyField: outcode
+      recordKeyField: key
+      producer: regionalNow
+      description: "Current regional intensity for a site — for 'how clean is our electricity right now'."
+    - anchorLabel: UkPlace
+      relationship: HAS_GRID_NOW
+      keyField: outcode
+      recordKeyField: key
+      producer: regionalNow
+      description: "The same for a watched UK place. Dormant where realm-uk-streets is not installed."
+  properties:
+    key:
+      description: "The outward postcode this was fetched for. Identity — two sites in the same outward code share one reading, which is correct: it is the same region."
+      metadata:
+        identity: "true"
+    intensity: "Forecast carbon intensity, gCO2 per kWh. Roughly: under 100 is clean, over 250 is dirty, and the day's range is usually a factor of three."
+    index: "The operator's own band — `very low`, `low`, `moderate`, `high`, `very high`. Quote this to a human."
+    periodFrom: "Start of the half-hour this reading covers, UTC."
+    periodTo: "End of the half-hour, UTC."
+
+# NATIONAL, and the whole day.
+- name: GridHalfHour
+  description: "One half-hourly settlement period of today's NATIONAL carbon intensity — 48 of them, starting 23:00 UTC the previous evening. Reached from GridSite via HAS_GRID_TODAY. This is the curve you schedule against: `actual` is settled and present only for periods that have already passed, `forecast` is present throughout, so anything about the REST of the day must read `forecast`. The whole day arrives in ONE call however many sites ask for it, because the figure is national — the same 48 periods attach to every site."
+  virtualJoins:
+    - anchorLabel: GridSite
+      relationship: HAS_GRID_TODAY
+      keyField: name
+      recordKeyField: key
+      producer: nationalToday
+      maxFanoutTotal: 500
+      description: "Today's 48 national half-hours — for 'when today is cleanest' and for the shape of the day."
+  properties:
+    periodFrom:
+      description: "Start of the half-hour, UTC. Identity — the same national period reached from five sites is ONE node with five edges."
+      metadata:
+        identity: "true"
+    key: "The site whose fetch materialised this period. The period is national; use the EDGE to know which sites it reaches, not this field."
+    periodTo: "End of the half-hour, UTC."
+    forecast: "Forecast intensity for the period, gCO2/kWh. Present for every period, including ones still to come."
+    actual: "Settled intensity, gCO2/kWh — present only once the period has passed. Null for the rest of today, which is not a gap but the future."
+    index: "The operator's band for this period."
+
+# NATIONAL, and current.
+- name: FuelShare
+  description: "One fuel's share of national generation right now, as a percentage. Reached from GridSite via HAS_FUEL_MIX. Nine fuels — biomass, coal, imports, gas, nuclear, other, hydro, solar, wind — returned in NO stable order, so always read them by `fuel` and never by position. National, so every site sees the same mix; it is the explanation behind the intensity number rather than a per-site fact."
+  virtualJoins:
+    - anchorLabel: GridSite
+      relationship: HAS_FUEL_MIX
+      keyField: name
+      recordKeyField: key
+      producer: generationMix
+      maxFanoutTotal: 200
+      description: "What is generating right now — the why behind the intensity."
+  properties:
+    fuel:
+      description: "Fuel name. Identity — national, so one node per fuel shared by every site."
+      metadata:
+        identity: "true"
+    key: "The site whose fetch materialised this row. National; follow the edge, not this field."
+    perc: "Percentage of national generation from this fuel right now."

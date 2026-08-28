@@ -1,0 +1,37 @@
+name: realm-grid
+description: |
+  When to run it. The carbon intensity of the electricity behind your sites,
+  half-hour by half-hour, and the number that follows from it: how much CO2
+  you save by moving a flexible workload into the cleanest window of the day.
+
+  Britain's grid swings by a factor of three or four within a single day —
+  the same kilowatt-hour can cost 60 gCO2 or 250 depending only on when it is
+  drawn. Nightly builds, model training, batch ETL, fleet charging: none of
+  them care what time they run, and almost nobody moves them, because nobody
+  has the number in front of them.
+
+  Name a site with its outward postcode. The realm reaches the regional
+  intensity for that site right now, the national half-hourly curve for the
+  day, and what is actually generating; the views turn that into the cleanest
+  window and the kilograms saved by using it. Where realm-uk-streets is
+  installed, every UkPlace you already watch gets the same treatment without
+  being listed twice.
+
+  One source: the UK National Grid ESO carbon intensity API, which is open,
+  keyless, and needs no account.
+version: 0.1.0
+author: rod
+tags:
+  - carbon
+  - sustainability
+  - scheduling
+  - finops
+  - openapi
+  - apps
+  - handlers
+exports:
+  - carbon_intensity
+  - GridSite
+  - GridNow
+  - GridHalfHour
+  - FuelShare

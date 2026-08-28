@@ -1,0 +1,46 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "UK Carbon Intensity API",
+    "version": "1.0.0",
+    "description": "National Grid ESO's carbon intensity service for Great Britain — open, keyless, no account. Intensity is grams of CO2 per kilowatt-hour of electricity consumed. Only the three PARAMETER-FREE operations are declared here: the service's forward-looking endpoints all require an explicit `from` timestamp, which a declarative producer has no way to supply, so this realm answers about now and about today rather than pretending to a rolling forecast."
+  },
+  "servers": [{ "url": "https://api.carbonintensity.org.uk" }],
+  "paths": {
+    "/regional/postcode/{outcode}": {
+      "get": {
+        "operationId": "regionalNow",
+        "summary": "Current carbon intensity for the region containing an outward postcode",
+        "description": "Returns `{data: [{regionid, dnoregion, shortname, postcode, data: [{from, to, intensity: {forecast, index}, generationmix: [...]}]}]}`. Note the doubly-nested `data`: the outer element is the REGION, the inner list is its readings. Regional figures are forecast only — there is no settled `actual` at regional granularity, which is why this operation reports a forecast and the national one reports both.",
+        "parameters": [
+          { "name": "outcode", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Outward postcode — the part before the space, e.g. `SE10`. Not a full postcode." }
+        ],
+        "responses": {
+          "200": { "description": "One region, one current reading.", "content": { "application/json": { "schema": { "type": "object" } } } }
+        }
+      }
+    },
+    "/intensity/date": {
+      "get": {
+        "operationId": "nationalToday",
+        "summary": "Every half-hour of today, nationally",
+        "description": "Returns `{data: [{from, to, intensity: {forecast, actual, index}}]}` — 48 half-hourly settlement periods for the current day, starting at 23:00 UTC the previous evening. `actual` is settled and present only for periods that have passed; `forecast` is present throughout, so a query covering the rest of the day must read `forecast`. Takes no parameters, which is what makes it usable from a producer.",
+        "parameters": [],
+        "responses": {
+          "200": { "description": "Today's half-hourly national intensity.", "content": { "application/json": { "schema": { "type": "object" } } } }
+        }
+      }
+    },
+    "/generation": {
+      "get": {
+        "operationId": "generationMix",
+        "summary": "What is generating right now, nationally",
+        "description": "Returns `{data: {from, to, generationmix: [{fuel, perc}]}}` — the national fuel mix as percentages. The fuels are biomass, coal, imports, gas, nuclear, other, hydro, solar and wind, and they are NOT returned in a stable order, so read them by `fuel` rather than by position.",
+        "parameters": [],
+        "responses": {
+          "200": { "description": "Current national generation mix.", "content": { "application/json": { "schema": { "type": "object" } } } }
+        }
+      }
+    }
+  }
+}
