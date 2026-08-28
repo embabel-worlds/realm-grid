@@ -26,6 +26,10 @@ async function read(ctx: any, cypher: string): Promise<Row[]> {
 }
 
 const num = (v: any): number => {
+  // Number(null) is 0, and Number('') is 0. Both would turn "we have no value for this" into a
+  // real, low, plausible number — an unscored project reported as 0/10 and ranked the most
+  // exposed thing in the estate, which is what this helper originally did.
+  if (v === null || v === undefined || v === '') return NaN
   const n = Number(v)
   return Number.isFinite(n) ? n : NaN
 }
