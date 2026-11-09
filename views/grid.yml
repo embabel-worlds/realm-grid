@@ -166,10 +166,11 @@
     WITH collect('At ' + substring(periodFrom, 11, 5) + ' UTC the national grid is forecast at ' +
                  toString(forecast) + ' gCO2/kWh (' + band + ').') AS periods
     MATCH (g:GridSite)-[:HAS_GRID_NOW]->(n:GridNow)
-    WITH periods + collect(g.name + ' is in region ' + g.outcode + ', currently ' +
+    WITH periods, collect(g.name + ' is in region ' + g.outcode + ', currently ' +
          toString(toInteger(n.intensity)) + ' gCO2/kWh (' + n.index + '), with ' +
          coalesce(g.flexibleLoadKwh, 'an unrecorded number of') +
-         ' kWh/day of flexible load: ' + coalesce(g.workload, 'unspecified work') + '.') AS facts
+         ' kWh/day of flexible load: ' + coalesce(g.workload, 'unspecified work') + '.') AS siteFacts
+    WITH periods + siteFacts AS facts
     UNWIND facts AS fact
     RETURN synthesize(fact,
       'You are advising an engineering team on when and where to run their flexible workloads today. Using ONLY these facts, say in under 150 words: which window today is worth moving work into and why, which site is currently the best place to run something movable, and one concrete change worth making this week. Quote the actual numbers. Do not invent sites, workloads or times that are not listed, and do not recommend buying anything. Be direct; no preamble.'
