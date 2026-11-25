@@ -19,7 +19,7 @@ description: |
 
   One source: the UK National Grid ESO carbon intensity API, which is open,
   keyless, and needs no account.
-version: 0.1.1
+version: 0.1.2
 author: rod
 category: science
 tags:
